@@ -4,6 +4,8 @@ import { GiftedChat, Bubble, Send, Time, InputToolbar, Composer } from 'react-na
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { Switch } from 'react-native-paper';
+import axios from 'axios';
+import * as Linking from 'expo-linking';
 
 export default function App() {
   const [messages, setMessages] = useState([]);
@@ -23,6 +25,37 @@ export default function App() {
     storeMessages(messages);
     storeMode(isDarkMode);
   }, [messages, isDarkMode]);
+
+  useEffect(() => {
+    const showInitialDialog = async () => {
+      try {
+        const hasOpenedBefore = await AsyncStorage.getItem('hasOpenedBefore');
+        if (hasOpenedBefore === null) {
+          Alert.alert(
+            'Rate the app',
+            'Please rate the app to support us. Also report bugs and issues easily.',
+            [
+              {
+                text: 'Rate app',
+                onPress: () => Linking.openURL('https://myket.ir/app/ir.chatgpt.ehsan'),
+              },
+              {
+                text: 'Cancel',
+                onPress: () => { },
+                style: 'cancel',
+              },
+            ],
+            { cancelable: false }
+          );
+          await AsyncStorage.setItem('hasOpenedBefore', 'true');
+        }
+      } catch (error) {
+        console.error('Failed to show initial dialog', error);
+      }
+    };
+
+    showInitialDialog();
+  }, []);
 
   const retrieveMessages = async () => {
     try {
@@ -71,45 +104,47 @@ export default function App() {
     setIsLoading(true);
     setMessages(previousMessages => GiftedChat.append(previousMessages, newMessages));
 
+    const tempMessage = {
+      _id: Math.random().toString(36).substring(7),
+      text: 'Message is sending...',
+      createdAt: new Date().toISOString(),
+      user: {
+        _id: 2,
+        name: 'ChatGPT',
+        avatar: "https://chatbot-app.github.io/static/media/icon.2a8ba17c99b635094f6b.png",
+      },
+    };
+    setMessages(previousMessages => GiftedChat.append(previousMessages, tempMessage));
+
     try {
-      const apiUrl = `https://req.wiki-api.ir/apis-2/ChatGPT4?q=${encodeURIComponent(newMessages[0].text)}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json; charset=UTF-8',
+      const response = await axios.get(`https://req.wiki-api.ir/apis-2/ChatGPT4?q=${encodeURIComponent(newMessages[0].text)}`);
+      const data = response.data;
+      const botResponse = {
+        _id: tempMessage._id,
+        text: data.results,
+        createdAt: new Date().toISOString(),
+        user: {
+          _id: 2,
+          name: 'ChatGPT',
+          avatar: "https://chatbot-app.github.io/static/media/icon.2a8ba17c99b635094f6b.png",
         },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const botResponse = {
-          _id: Math.random().toString(36).substring(7),
-          text: data.results, // فیلد "results" برای پیام
-          createdAt: new Date().toISOString(),
-          user: {
-            _id: 2,
-            name: 'ChatGPT',
-          },
-        };
-        setIsLoading(false);
-        setMessages(previousMessages => GiftedChat.append(previousMessages, botResponse));
-      } else {
-        throw new Error('Failed to get response from chatbot');
-      }
+      };
+      setIsLoading(false);
+      setMessages(previousMessages => previousMessages.map(msg => msg._id === tempMessage._id ? botResponse : msg));
     } catch (error) {
       setIsLoading(false);
       Alert.alert('Error', error.message);
       const errorMessage = {
-        _id: Math.random().toString(36).substring(7),
+        _id: tempMessage._id,
         text: 'Failed to send message. Please try again.',
         createdAt: new Date().toISOString(),
         user: {
           _id: 2,
           name: 'ChatGPT',
+          avatar: "https://chatbot-app.github.io/static/media/icon.2a8ba17c99b635094f6b.png",
         },
       };
-      setMessages(previousMessages => GiftedChat.append(previousMessages, errorMessage));
+      setMessages(previousMessages => previousMessages.map(msg => msg._id === tempMessage._id ? errorMessage : msg));
     }
   };
 
@@ -138,43 +173,59 @@ export default function App() {
     );
   };
 
-  const renderBubble = (props) => (
-    <Bubble
-      {...props}
-      wrapperStyle={{
-        right: { backgroundColor: isDarkMode ? '#3c3f42' : '#000' },
-      }}
-      textStyle={{
-        right: { color: '#fff' },
-      }}
-      timeTextStyle={{
-        right: { color: 'rgba(255,255,255,0.5)' },
-      }}
-    />
-  );
+  const renderBubble = (props) => {
+    return (
+      <Bubble
+        {...props}
+        wrapperStyle={{
+          right: {
+            backgroundColor: isDarkMode ? '#3c3f42' : '#000',
+          },
+        }}
+        textStyle={{
+          right: {
+            color: isDarkMode ? '#fff' : '#fff',
+          },
+        }}
+        timeTextStyle={{
+          right: {
+            color: 'rgba(255,255,255,0.5)',
+          },
+        }}
+      />
+    );
+  };
 
-  const renderSend = (props) => (
-    <Send {...props}>
-      <View style={styles.sendingContainer}>
-        <ActivityIndicator size="small" color="#007aff" />
+  const renderSend = (props) => {
+    return (
+      <Send {...props}>
+        <View style={styles.sendingContainer}>
+          <ActivityIndicator size="small" color="#007aff" />
+        </View>
+      </Send>
+    );
+  };
+
+  const renderLoading = () => {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007aff" />
       </View>
-    </Send>
-  );
-
-  const renderLoading = () => (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#007aff" />
-    </View>
-  );
+    );
+  };
 
   const renderTime = (props) => (
     <Time
       {...props}
       timeTextStyle={{
-        left: { color: 'grey' },
-        right: { color: 'grey' },
+        left: {
+          color: 'grey',
+        },
+        right: {
+          color: 'grey',
+        },
       }}
-      format="HH:mm"
+      format='HH:mm'
     />
   );
 
@@ -185,6 +236,7 @@ export default function App() {
         backgroundColor: isDarkMode ? '#41444a' : '#fff',
         borderTopColor: isDarkMode ? '#fff' : '#000',
         borderTopWidth: 1,
+        minHeight: 50,
       }}
     />
   );
@@ -195,19 +247,22 @@ export default function App() {
       textInputStyle={{
         color: isDarkMode ? '#fff' : '#000',
         backgroundColor: isDarkMode ? '#333' : '#f0f0f0',
-        padding: 12,
+        paddingTop: 12,
+        paddingBottom: 12,
+        paddingHorizontal: 12,
+        marginLeft: 0,
       }}
     />
   );
 
-  const toggleSwitch = () => setIsDarkMode(prevState => !prevState);
+  const toggleSwitch = () => setIsDarkMode(previousState => !previousState);
 
   return (
     <View style={[styles.container, { backgroundColor: isDarkMode ? '#000' : '#fff' }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#fff' : '#000' }]}>Chat GPT</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Switch value={isDarkMode} onValueChange={toggleSwitch} />
+          <Switch style={{ marginRight: 12 }} value={isDarkMode} onValueChange={toggleSwitch} />
           <TouchableOpacity onPress={deleteChat}>
             <Icon name="trash-outline" size={24} color={isDarkMode ? '#fff' : '#000'} />
           </TouchableOpacity>
@@ -215,8 +270,10 @@ export default function App() {
       </View>
       <GiftedChat
         messages={messages}
-        onSend={onSend}
-        user={{ _id: 1 }}
+        onSend={newMessages => onSend(newMessages)}
+        user={{
+          _id: 1,
+        }}
         renderBubble={renderBubble}
         renderSend={isLoading ? renderSend : null}
         renderLoading={renderLoading}
@@ -229,7 +286,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -238,7 +297,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
   },
-  headerTitle: { fontSize: 20, fontWeight: 'bold' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  sendingContainer: { justifyContent: 'center', alignItems: 'center' },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
